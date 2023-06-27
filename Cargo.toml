@@ -6,8 +6,10 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bytemuck = "1.13.1"
 env_logger = "0.10.0"
 log = "0.4.19"
+nanorand = "0.7.0"
 pollster = "0.3.0"
 raw-window-handle = "0.5.2"
 smithay-client-toolkit = { version = "0.17.0" }

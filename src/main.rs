@@ -6,7 +6,7 @@ use raw_window_handle::{
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
     delegate_compositor, delegate_keyboard, delegate_layer, delegate_output, delegate_pointer,
-    delegate_registry, delegate_seat, delegate_shm,
+    delegate_registry, delegate_seat,
     output::{OutputHandler, OutputState},
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
@@ -20,15 +20,13 @@ use smithay_client_toolkit::{
             Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface,
             LayerSurfaceConfigure,
         },
-        xdg::window::Window,
         WaylandSurface,
     },
-    shm::{slot::SlotPool, Shm, ShmHandler},
 };
-use std::{borrow::Cow, convert::TryInto};
+use std::borrow::Cow;
 use wayland_client::{
     globals::registry_queue_init,
-    protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_shm, wl_surface},
+    protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface},
     Connection, Proxy, QueueHandle,
 };
 use xkbcommon::xkb::keysyms;
@@ -55,8 +53,13 @@ fn main() {
         ..Default::default()
     });
     // And then we create the layer shell.
-    let layer =
-        layer_shell.create_layer_surface(&qh, surface, Layer::Background, Some("simple_layer"), None);
+    let layer = layer_shell.create_layer_surface(
+        &qh,
+        surface,
+        Layer::Background,
+        Some("simple_layer"),
+        None,
+    );
 
     // Create the raw window handle for the surface.
     let handle = {
@@ -109,7 +112,6 @@ fn main() {
     layer.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::RIGHT | Anchor::LEFT);
     layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
     layer.set_exclusive_zone(-1);
-    // layer.set_size(256, 256);
 
     // In order for the layer surface to be mapped, we need to perform an initial commit with no attached\
     // buffer. For more info, see WaylandSurface::commit
@@ -145,7 +147,7 @@ fn main() {
         event_queue.blocking_dispatch(&mut simple_layer).unwrap();
 
         if simple_layer.exit {
-            println!("exiting example");
+            println!("lively");
             break;
         }
     }
@@ -169,7 +171,6 @@ struct Wgpu {
     keyboard_focus: bool,
     pointer: Option<wl_pointer::WlPointer>,
 }
-
 impl CompositorHandler for Wgpu {
     fn scale_factor_changed(
         &mut self,
@@ -416,7 +417,7 @@ impl PointerHandler for Wgpu {
 }
 
 impl Wgpu {
-    pub fn draw(&mut self, qh: &QueueHandle<Self>) {
+    pub fn draw(&mut self, _qh: &QueueHandle<Self>) {
         let adapter = &self.adapter;
         let surface = &self.surface;
         let device = &self.device;
