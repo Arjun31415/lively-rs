@@ -1,0 +1,17 @@
+[package]
+name = "lively-rs"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+env_logger = "0.10.0"
+log = "0.4.19"
+pollster = "0.3.0"
+raw-window-handle = "0.5.2"
+smithay-client-toolkit = { version = "0.17.0" }
+wayland-backend = { version = "0.1.2", features = ["client_system"] }
+wayland-client = { version = "0.30.2", features = ["calloop"] }
+wgpu = "0.15.1"
+xkbcommon = "0.5.0"
