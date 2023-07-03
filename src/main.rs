@@ -1,4 +1,5 @@
-//! This example is horrible. Please make a better one soon.
+mod graphics;
+use crate::graphics::framework::Wallpaper;
 use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
     WaylandDisplayHandle, WaylandWindowHandle,
@@ -24,154 +25,15 @@ use smithay_client_toolkit::{
     },
 };
 use std::borrow::Cow;
+use std::future::Future;
+use std::time::Instant;
 use wayland_client::{
     globals::registry_queue_init,
     protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface},
     Connection, Proxy, QueueHandle,
 };
 use xkbcommon::xkb::keysyms;
-
-fn main() {
-    env_logger::init();
-
-    // All Wayland apps start by connecting the compositor (server).
-    let conn = Connection::connect_to_env().unwrap();
-
-    // Enumerate the list of globals to get the protocols the server implements.
-    let (globals, mut event_queue) = registry_queue_init(&conn).unwrap();
-    let qh = event_queue.handle();
-
-    // The compositor (not to be confused with the server which is commonly called the compositor) allows
-    // configuring surfaces to be presented.
-    let compositor = CompositorState::bind(&globals, &qh).expect("wl_compositor is not available");
-    let surface = compositor.create_surface(&qh);
-    // This app uses the wlr layer shell, which may not be available with every compositor.
-    let layer_shell = LayerShell::bind(&globals, &qh).expect("layer shell is not available");
-    // Initialize wgpu
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        ..Default::default()
-    });
-    // And then we create the layer shell.
-    let layer = layer_shell.create_layer_surface(
-        &qh,
-        surface,
-        Layer::Background,
-        Some("simple_layer"),
-        None,
-    );
-
-    // Create the raw window handle for the surface.
-    let handle = {
-        let mut handle = WaylandDisplayHandle::empty();
-        handle.display = conn.backend().display_ptr() as *mut _;
-        let display_handle = RawDisplayHandle::Wayland(handle);
-
-        let mut handle = WaylandWindowHandle::empty();
-        let wl_surface = layer.wl_surface();
-        handle.surface = wl_surface.id().as_ptr() as *mut _;
-        let window_handle = RawWindowHandle::Wayland(handle);
-
-        /// https://github.com/rust-windowing/raw-window-handle/issues/49
-        struct YesRawWindowHandleImplementingHasRawWindowHandleIsUnsound(
-            RawDisplayHandle,
-            RawWindowHandle,
-        );
-
-        unsafe impl HasRawDisplayHandle for YesRawWindowHandleImplementingHasRawWindowHandleIsUnsound {
-            fn raw_display_handle(&self) -> RawDisplayHandle {
-                self.0
-            }
-        }
-
-        unsafe impl HasRawWindowHandle for YesRawWindowHandleImplementingHasRawWindowHandleIsUnsound {
-            fn raw_window_handle(&self) -> RawWindowHandle {
-                self.1
-            }
-        }
-
-        YesRawWindowHandleImplementingHasRawWindowHandleIsUnsound(display_handle, window_handle)
-    };
-    // A layer surface is created from a surface.
-    let surface = unsafe { instance.create_surface(&handle).unwrap() };
-
-    // Pick a supported adapter
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        compatible_surface: Some(&surface),
-        ..Default::default()
-    }))
-    .expect("Failed to find suitable adapter");
-    let (device, queue) = pollster::block_on(adapter.request_device(&Default::default(), None))
-        .expect("Failed to request device");
-    // Since we are not using the GPU in this example, we use wl_shm to allow software rendering to a buffer
-    // we share with the compositor process.
-    // let shm = Shm::bind(&globals, &qh).expect("wl_shm is not available");
-
-    // Configure the layer surface, providing things like the anchor on screen, desired size and the keyboard
-    // interactivity
-    layer.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::RIGHT | Anchor::LEFT);
-    layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
-    layer.set_exclusive_zone(-1);
-
-    // In order for the layer surface to be mapped, we need to perform an initial commit with no attached\
-    // buffer. For more info, see WaylandSurface::commit
-    //
-    // The compositor will respond with an initial configure that we can then use to present to the layer
-    // surface with the correct options.
-    layer.commit();
-
-    let mut simple_layer = Wgpu {
-        // Seats and outputs may be hotplugged at runtime, therefore we need to setup a registry state to
-        // listen for seats and outputs.
-        registry_state: RegistryState::new(&globals),
-        seat_state: SeatState::new(&globals, &qh),
-        output_state: OutputState::new(&globals, &qh),
-
-        exit: false,
-        first_configure: true,
-        width: 256,
-        height: 256,
-        device,
-        surface,
-        adapter,
-        queue,
-        shift: None,
-        layer,
-        keyboard: None,
-        keyboard_focus: false,
-        pointer: None,
-    };
-
-    // We don't draw immediately, the configure will notify us when to first draw.
-    loop {
-        event_queue.blocking_dispatch(&mut simple_layer).unwrap();
-
-        if simple_layer.exit {
-            println!("lively");
-            break;
-        }
-    }
-}
-
-struct Wgpu {
-    registry_state: RegistryState,
-    seat_state: SeatState,
-    output_state: OutputState,
-    exit: bool,
-    first_configure: bool,
-    width: u32,
-    height: u32,
-    adapter: wgpu::Adapter,
-    queue: wgpu::Queue,
-    device: wgpu::Device,
-    surface: wgpu::Surface,
-    shift: Option<u32>,
-    layer: LayerSurface,
-    keyboard: Option<wl_keyboard::WlKeyboard>,
-    keyboard_focus: bool,
-    pointer: Option<wl_pointer::WlPointer>,
-}
-impl CompositorHandler for Wgpu {
+impl CompositorHandler for Wallpaper {
     fn scale_factor_changed(
         &mut self,
         _conn: &Connection,
@@ -189,11 +51,12 @@ impl CompositorHandler for Wgpu {
         _surface: &wl_surface::WlSurface,
         _time: u32,
     ) {
+        println!("frame");
         self.draw(qh);
     }
 }
 
-impl OutputHandler for Wgpu {
+impl OutputHandler for Wallpaper {
     fn output_state(&mut self) -> &mut OutputState {
         &mut self.output_state
     }
@@ -223,7 +86,7 @@ impl OutputHandler for Wgpu {
     }
 }
 
-impl LayerShellHandler for Wgpu {
+impl LayerShellHandler for Wallpaper {
     fn closed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _layer: &LayerSurface) {
         self.exit = true;
     }
@@ -252,7 +115,7 @@ impl LayerShellHandler for Wgpu {
     }
 }
 
-impl SeatHandler for Wgpu {
+impl SeatHandler for Wallpaper {
     fn seat_state(&mut self) -> &mut SeatState {
         &mut self.seat_state
     }
@@ -306,7 +169,7 @@ impl SeatHandler for Wgpu {
     fn remove_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}
 }
 
-impl KeyboardHandler for Wgpu {
+impl KeyboardHandler for Wallpaper {
     fn enter(
         &mut self,
         _: &Connection,
@@ -375,7 +238,7 @@ impl KeyboardHandler for Wgpu {
     }
 }
 
-impl PointerHandler for Wgpu {
+impl PointerHandler for Wallpaper {
     fn pointer_frame(
         &mut self,
         _conn: &Connection,
@@ -416,7 +279,7 @@ impl PointerHandler for Wgpu {
     }
 }
 
-impl Wgpu {
+impl Wallpaper {
     pub fn draw(&mut self, _qh: &QueueHandle<Self>) {
         let adapter = &self.adapter;
         let surface = &self.surface;
@@ -496,24 +359,34 @@ impl Wgpu {
 
         // Submit the command in the queue to execute
         queue.submit(Some(encoder.finish()));
+        self.wl_surface
+            .damage_buffer(0, 0, self.width as i32, self.height as i32);
+        self.wl_surface.frame(_qh, self.wl_surface.clone());
         surface_texture.present();
+        self.layer.commit();
+        self.wl_surface.commit();
     }
 }
 
-delegate_compositor!(Wgpu);
-delegate_output!(Wgpu);
+// delegate_compositor!(Wallpaper);
+// delegate_output!(Wallpaper);
 
-delegate_seat!(Wgpu);
-delegate_keyboard!(Wgpu);
-delegate_pointer!(Wgpu);
+// delegate_seat!(Wallpaper);
+// delegate_keyboard!(Wallpaper);
+// delegate_pointer!(Wallpaper);
 
-delegate_layer!(Wgpu);
+// delegate_layer!(Wallpaper);
 
-delegate_registry!(Wgpu);
+// delegate_registry!(Wallpaper);
 
-impl ProvidesRegistryState for Wgpu {
+impl ProvidesRegistryState for Wallpaper {
     fn registry(&mut self) -> &mut RegistryState {
         &mut self.registry_state
     }
     registry_handlers![OutputState, SeatState];
+}
+impl graphics::framework::WgpuConfig for Wallpaper {}
+
+fn main() {
+    pollster::block_on(graphics::framework::setup::<Wallpaper>());
 }
