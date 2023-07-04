@@ -25,6 +25,7 @@ use smithay_client_toolkit::{
     },
 };
 use std::borrow::Cow;
+use std::fs::File;
 use std::future::Future;
 use std::time::Instant;
 use wayland_client::{
@@ -367,17 +368,6 @@ impl Wallpaper {
         self.wl_surface.commit();
     }
 }
-
-// delegate_compositor!(Wallpaper);
-// delegate_output!(Wallpaper);
-
-// delegate_seat!(Wallpaper);
-// delegate_keyboard!(Wallpaper);
-// delegate_pointer!(Wallpaper);
-
-// delegate_layer!(Wallpaper);
-
-// delegate_registry!(Wallpaper);
 
 impl ProvidesRegistryState for Wallpaper {
     fn registry(&mut self) -> &mut RegistryState {
