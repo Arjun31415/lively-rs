@@ -241,8 +241,8 @@ impl PointerHandler for Wallpaper {
         use PointerEventKind::*;
         for event in events {
             // Ignore events for other surfaces
-            /* if &event.surface != self.layer.wl_surface() { continue;
-            } */
+            if &event.surface != self.layer.wl_surface() { continue;
+            }
             println!("event");
             match event.kind {
                 Enter { .. } => {
