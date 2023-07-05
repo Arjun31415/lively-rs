@@ -1,4 +1,7 @@
 // taken from https://github.com/gfx-rs/wgpu/blob/trunk/examples/common/src/framework.rs
+use input::event::pointer::PointerEvent as LibinputPointerEvent;
+use input::{AsRaw, Libinput, LibinputInterface};
+use nix::poll::{poll, PollFd, PollFlags};
 use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
     WaylandDisplayHandle, WaylandWindowHandle,
@@ -24,7 +27,13 @@ use smithay_client_toolkit::{
     },
 };
 use std::borrow::Cow;
+use std::fs::{File, OpenOptions};
 use std::future::Future;
+use std::os::fd::AsRawFd;
+use std::os::unix::{fs::OpenOptionsExt, io::OwnedFd};
+use std::path::Path;
+use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::Instant;
 use wayland_client::{
     globals::registry_queue_init,
@@ -39,6 +48,7 @@ pub enum ShaderStage {
     Fragment,
     Compute,
 }
+pub static POINTER_POS: Mutex<(f64, f64)> = Mutex::new((0.0, 0.0));
 
 pub struct Wallpaper {
     pub registry_state: RegistryState,
@@ -206,7 +216,6 @@ pub async fn setup<E: WgpuConfig>() {
         registry_state: RegistryState::new(&globals),
         seat_state: SeatState::new(&globals, &qh),
         output_state: OutputState::new(&globals, &qh),
-
         exit: false,
         first_configure: true,
         width: 256,
@@ -222,15 +231,62 @@ pub async fn setup<E: WgpuConfig>() {
         keyboard_focus: false,
         pointer: None,
     };
-println!("Starting event loop");
+    let handle = thread::spawn(|| {
+        use std::process;
+        println!("My pid is {}", process::id());
+        track_mouse_movement();
+        println!("Thread over");
+    });
+    println!("Starting event loop");
+
     loop {
         event_queue.blocking_dispatch(&mut w).unwrap();
-
         if w.exit {
             log::info!("Exiting");
+            // TODO: destroy the thread handle
             break;
         }
     }
+    handle.join();
+}
+struct Interface;
+
+impl LibinputInterface for Interface {
+    fn open_restricted(&mut self, path: &Path, flags: i32) -> Result<OwnedFd, i32> {
+        OpenOptions::new()
+            .custom_flags(flags)
+            // Open as Read-Only, always
+            .read(true)
+            .write(false)
+            .open(path)
+            .map(|file| file.into())
+            .map_err(|err| err.raw_os_error().unwrap())
+    }
+    fn close_restricted(&mut self, fd: OwnedFd) {
+        drop(File::from(fd))
+    }
+}
+
+fn track_mouse_movement() {
+    let mut input = Libinput::new_with_udev(Interface);
+    input.udev_assign_seat("seat0").unwrap();
+    let pollfd = PollFd::new(input.as_raw_fd(), PollFlags::POLLIN);
+    while poll(&mut [pollfd], -1).is_ok() {
+        input.dispatch().unwrap();
+        for event in &mut input {
+            if let input::event::Event::Pointer(LibinputPointerEvent::Motion(pointer_event)) =
+                &event
+            {
+                // println!("({}, {})", pointer_event.dx(), pointer_event.dy());
+                // wait for lock
+                let mut pos = POINTER_POS.lock().unwrap();
+                (*pos).0 += pointer_event.dx();
+                (*pos).1 += pointer_event.dy();
+                drop(pos);
+            }
+        }
+    }
+    println!("returning from mouse");
 }
 delegate_compositor!(Wallpaper);
 delegate_output!(Wallpaper);
@@ -242,4 +298,3 @@ delegate_pointer!(Wallpaper);
 delegate_layer!(Wallpaper);
 
 delegate_registry!(Wallpaper);
-

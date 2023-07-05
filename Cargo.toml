@@ -8,8 +8,10 @@ edition = "2021"
 [dependencies]
 bytemuck = "1.13.1"
 env_logger = "0.10.0"
+input = "0.8.2"
 log = "0.4.19"
 nanorand = "0.7.0"
+nix = "0.26.2"
 pollster = "0.3.0"
 raw-window-handle = "0.5.2"
 smithay-client-toolkit = { version = "0.17.0" }
