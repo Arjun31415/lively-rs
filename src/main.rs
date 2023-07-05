@@ -1,16 +1,7 @@
 mod graphics;
 use crate::graphics::framework::Wallpaper;
-use input::event::pointer::PointerEvent as LibinputPointerEvent;
-use input::{AsRaw, Libinput, LibinputInterface};
-use nix::poll::{poll, PollFd, PollFlags};
-use raw_window_handle::{
-    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
-    WaylandDisplayHandle, WaylandWindowHandle,
-};
 use smithay_client_toolkit::{
-    compositor::{CompositorHandler, CompositorState},
-    delegate_compositor, delegate_keyboard, delegate_layer, delegate_output, delegate_pointer,
-    delegate_registry, delegate_seat,
+    compositor::CompositorHandler,
     output::{OutputHandler, OutputState},
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
@@ -21,23 +12,16 @@ use smithay_client_toolkit::{
     },
     shell::{
         wlr_layer::{
-            Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface,
+            LayerShellHandler, LayerSurface,
             LayerSurfaceConfigure,
         },
         WaylandSurface,
     },
 };
-use std::fs::{File, OpenOptions};
-use std::future::Future;
-use std::io::{stdout, Write};
-use std::os::fd::AsRawFd;
-use std::os::unix::{fs::OpenOptionsExt, io::OwnedFd};
-use std::time::Instant;
-use std::{borrow::Cow, path::Path};
+use std::borrow::Cow;
 use wayland_client::{
-    globals::registry_queue_init,
     protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface},
-    Connection, Proxy, QueueHandle,
+    Connection, QueueHandle,
 };
 
 use xkbcommon::xkb::keysyms;
@@ -380,23 +364,6 @@ impl Wallpaper {
         self.wl_surface.commit();
     }
 }
-struct Interface;
-
-impl LibinputInterface for Interface {
-    fn open_restricted(&mut self, path: &Path, flags: i32) -> Result<OwnedFd, i32> {
-        OpenOptions::new()
-            .custom_flags(flags)
-            // Open as Read-Only, always
-            .read(true)
-            .write(false)
-            .open(path)
-            .map(|file| file.into())
-            .map_err(|err| err.raw_os_error().unwrap())
-    }
-    fn close_restricted(&mut self, fd: OwnedFd) {
-        drop(File::from(fd))
-    }
-}
 
 impl ProvidesRegistryState for Wallpaper {
     fn registry(&mut self) -> &mut RegistryState {
@@ -408,18 +375,4 @@ impl graphics::framework::WgpuConfig for Wallpaper {}
 
 fn main() {
     pollster::block_on(graphics::framework::setup::<Wallpaper>());
-    /* let mut input = Libinput::new_with_udev(Interface);
-    input.udev_assign_seat("seat0").unwrap();
-    let pollfd = PollFd::new(input.as_raw_fd(), PollFlags::POLLIN);
-    while poll(&mut [pollfd], -1).is_ok() {
-        input.dispatch().unwrap();
-        for event in &mut input {
-            if let input::event::Event::Pointer(LibinputPointerEvent::Motion(
-                pointer_event,
-            )) = &event
-            {
-                println!("({}, {})", pointer_event.dx(), pointer_event.dy());
-            }
-        }
-    } */
 }

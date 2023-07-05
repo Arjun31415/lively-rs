@@ -1,46 +1,34 @@
 // taken from https://github.com/gfx-rs/wgpu/blob/trunk/examples/common/src/framework.rs
 use input::event::pointer::PointerEvent as LibinputPointerEvent;
-use input::{AsRaw, Libinput, LibinputInterface};
+use input::{Libinput, LibinputInterface};
 use nix::poll::{poll, PollFd, PollFlags};
 use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
     WaylandDisplayHandle, WaylandWindowHandle,
 };
 use smithay_client_toolkit::{
-    compositor::{CompositorHandler, CompositorState},
+    compositor::CompositorState,
     delegate_compositor, delegate_keyboard, delegate_layer, delegate_output, delegate_pointer,
     delegate_registry, delegate_seat,
-    output::{OutputHandler, OutputState},
-    registry::{ProvidesRegistryState, RegistryState},
-    registry_handlers,
-    seat::{
-        keyboard::{KeyEvent, KeyboardHandler, Modifiers},
-        pointer::{PointerEvent, PointerEventKind, PointerHandler},
-        Capability, SeatHandler, SeatState,
-    },
+    output::OutputState,
+    registry::RegistryState,
+    seat::SeatState,
     shell::{
-        wlr_layer::{
-            Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface,
-            LayerSurfaceConfigure,
-        },
+        wlr_layer::{Anchor, KeyboardInteractivity, Layer, LayerShell, LayerSurface},
         WaylandSurface,
     },
 };
-use std::borrow::Cow;
 use std::fs::{File, OpenOptions};
-use std::future::Future;
 use std::os::fd::AsRawFd;
 use std::os::unix::{fs::OpenOptionsExt, io::OwnedFd};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::thread;
-use std::time::Instant;
 use wayland_client::{
     globals::registry_queue_init,
-    protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface},
-    Connection, Proxy, QueueHandle,
+    protocol::{wl_keyboard, wl_pointer, wl_surface},
+    Connection, Proxy,
 };
-use xkbcommon::xkb::keysyms;
 
 #[allow(dead_code)]
 pub enum ShaderStage {
@@ -159,7 +147,7 @@ pub async fn setup<E: WgpuConfig>() {
         ..Default::default()
     }))
     .expect("Failed to find suitable adapter");
-    let (device, queue) = pollster::block_on(adapter.request_device(&Default::default(), None))
+    let (_device, _queue) = pollster::block_on(adapter.request_device(&Default::default(), None))
         .expect("Failed to request device");
     // Configure the layer surface, providing things like the anchor on screen, desired size and the keyboard
     // interactivity
@@ -247,7 +235,7 @@ pub async fn setup<E: WgpuConfig>() {
             break;
         }
     }
-    handle.join();
+    handle.join().unwrap();
 }
 struct Interface;
 
