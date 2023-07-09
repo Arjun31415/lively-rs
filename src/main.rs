@@ -23,6 +23,7 @@ use wayland_client::{
     Connection, QueueHandle,
 };
 use wgpu::util::DeviceExt;
+#[derive(Debug)]
 struct Boid {
     num_particles: u32,
     particles_per_group: u32,
@@ -524,11 +525,37 @@ impl Wallpaper {
             vertices_buffer: Some(vertices_buffer),
             ..*boid_guard
         };
+        /* let surface_texture = surface
+            .get_current_texture()
+            .expect("failed to acquire next swapchain texture");
+        let texture_view = surface_texture
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = device.create_command_encoder(&Default::default());
+        {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: None,
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &texture_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::GREEN),
+                        store: true,
+                    },
+                })],
+                depth_stencil_attachment: None,
+            });
+        }
+        queue.submit(Some(encoder.finish())); */
+        drop(boid_guard);
         self.wl_surface
             .damage_buffer(0, 0, self.width as i32, self.height as i32);
         self.wl_surface.frame(_qh, self.wl_surface.clone());
+        // surface_texture.present();
         self.layer.commit();
         self.wl_surface.commit();
+        self.render(_qh);
     }
     fn render(&mut self, _qh: &QueueHandle<Self>) {
         let mut boid_guard = BOID.lock().unwrap();
@@ -539,7 +566,6 @@ impl Wallpaper {
         let surface_texture = surface
             .get_current_texture()
             .expect("failed to acquire next swapchain texture");
-
         let view = &surface_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -563,7 +589,6 @@ impl Wallpaper {
         // get command encoder
         let mut command_encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-
         command_encoder.push_debug_group("compute boid movement");
         {
             // compute pass
@@ -606,7 +631,7 @@ impl Wallpaper {
         self.wl_surface
             .damage_buffer(0, 0, self.width as i32, self.height as i32);
         self.wl_surface.frame(_qh, self.wl_surface.clone());
-        // surface_texture.present();
+        surface_texture.present();
         self.layer.commit();
         self.wl_surface.commit();
     }
@@ -618,7 +643,18 @@ impl ProvidesRegistryState for Wallpaper {
     }
     registry_handlers![OutputState, SeatState];
 }
-impl graphics::framework::WgpuConfig for Wallpaper {}
+impl graphics::framework::WgpuConfig for Wallpaper {
+    fn required_limits() -> wgpu::Limits {
+        wgpu::Limits::downlevel_defaults()
+    }
+
+    fn required_downlevel_capabilities() -> wgpu::DownlevelCapabilities {
+        wgpu::DownlevelCapabilities {
+            flags: wgpu::DownlevelFlags::COMPUTE_SHADERS,
+            ..Default::default()
+        }
+    }
+}
 
 fn main() {
     pollster::block_on(graphics::framework::setup::<Wallpaper>());
