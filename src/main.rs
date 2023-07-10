@@ -307,8 +307,6 @@ impl Wallpaper {
         let queue = &self.queue;
         let mut boid_guard = BOID.lock().unwrap();
 
-        /* let swapchain_capabilities = surface.get_capabilities(&adapter);
-        let swapchain_format = swapchain_capabilities.formats[0]; */
         // Load the shaders from disk
         let compute_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: None,
@@ -337,9 +335,7 @@ impl Wallpaper {
             .get_default_config(&adapter, self.width, self.height)
             .expect("Surface isn't supported by the adapter.");
         let mut surface_config = wgpu::SurfaceConfiguration {
-            /* format: swapchain_format,
-            view_formats: vec![swapchain_format], */
-            // alpha_mode: wgpu::CompositeAlphaMode::Auto,
+            alpha_mode: wgpu::CompositeAlphaMode::Auto,
             width: self.width,
             height: self.height,
             // Wayland is inherently a mailbox system.
@@ -525,29 +521,6 @@ impl Wallpaper {
             vertices_buffer: Some(vertices_buffer),
             ..*boid_guard
         };
-        /* let surface_texture = surface
-            .get_current_texture()
-            .expect("failed to acquire next swapchain texture");
-        let texture_view = surface_texture
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-
-        let mut encoder = device.create_command_encoder(&Default::default());
-        {
-            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: None,
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &texture_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::GREEN),
-                        store: true,
-                    },
-                })],
-                depth_stencil_attachment: None,
-            });
-        }
-        queue.submit(Some(encoder.finish())); */
         drop(boid_guard);
         self.wl_surface
             .damage_buffer(0, 0, self.width as i32, self.height as i32);
