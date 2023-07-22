@@ -22,14 +22,14 @@ use std::fs::{File, OpenOptions};
 use std::os::fd::AsRawFd;
 use std::os::unix::{fs::OpenOptionsExt, io::OwnedFd};
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Mutex, Arc};
 use std::thread;
 use wayland_client::{
     globals::registry_queue_init,
     protocol::{wl_keyboard, wl_pointer, wl_surface},
     Connection, Proxy,
 };
-
+use std::fmt::Debug;
 #[allow(dead_code)]
 pub enum ShaderStage {
     Vertex,
@@ -51,6 +51,7 @@ pub struct Wallpaper {
     pub device: wgpu::Device,
     pub surface: wgpu::Surface,
     pub wl_surface: wl_surface::WlSurface,
+
 
     pub shift: Option<u32>,
     pub layer: LayerSurface,
@@ -76,7 +77,6 @@ pub trait WgpuConfig: 'static + Sized {
         wgpu::Limits::downlevel_webgl2_defaults() // These downlevel limits will allow the code to run on all possible hardware
     }
 }
-
 pub async fn setup<E: WgpuConfig>() {
     env_logger::init();
     // All Wayland apps start by connecting the compositor (server).
@@ -219,12 +219,12 @@ pub async fn setup<E: WgpuConfig>() {
         keyboard_focus: false,
         pointer: None,
     };
-    let handle = thread::spawn(|| {
+    /* let handle = thread::spawn(|| {
         use std::process;
         println!("My pid is {}", process::id());
-        track_mouse_movement();
+        track_mouse_movement(layer. );
         println!("Thread over");
-    });
+    }); */
     println!("Starting event loop");
 
     loop {
@@ -235,7 +235,7 @@ pub async fn setup<E: WgpuConfig>() {
             break;
         }
     }
-    handle.join().unwrap();
+    // handle.join().unwrap();
 }
 struct Interface;
 
@@ -254,8 +254,8 @@ impl LibinputInterface for Interface {
         drop(File::from(fd))
     }
 }
-
-fn track_mouse_movement() {
+impl Wallpaper{
+fn track_mouse_movement(screen_dimensions: (i32, i32)){
     let mut input = Libinput::new_with_udev(Interface);
     input.udev_assign_seat("seat0").unwrap();
     let pollfd = PollFd::new(input.as_raw_fd(), PollFlags::POLLIN);
@@ -270,11 +270,14 @@ fn track_mouse_movement() {
                 let mut pos = POINTER_POS.lock().unwrap();
                 (*pos).0 += pointer_event.dx();
                 (*pos).1 += pointer_event.dy();
+                let (x, y) = *pos;
+
                 drop(pos);
             }
         }
     }
     println!("returning from mouse");
+}
 }
 delegate_compositor!(Wallpaper);
 delegate_output!(Wallpaper);
