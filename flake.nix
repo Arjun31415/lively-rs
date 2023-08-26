@@ -4,7 +4,10 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
-    nixgl.url = "github:guibou/nixGL";
+    nixgl = {
+      url = "github:guibou/nixGL";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     flake-parts = {
       url = "github:hercules-ci/flake-parts";
       inputs.nixpkgs-lib.follows = "nixpkgs";
@@ -41,6 +44,8 @@
             rustfmt
             rustPackages.clippy
             glxinfo
+            inputs.nixgl.packages.${pkgs.system}.default
+
             # inputs.nixgl.packages.${system}.default
           ];
 
