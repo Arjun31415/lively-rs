@@ -1,7 +1,4 @@
 // taken from https://github.com/gfx-rs/wgpu/blob/trunk/examples/common/src/framework.rs
-use input::event::pointer::PointerEvent as LibinputPointerEvent;
-use input::{Libinput, LibinputInterface};
-use nix::poll::{poll, PollFd, PollFlags};
 use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
     WaylandDisplayHandle, WaylandWindowHandle,
@@ -18,12 +15,6 @@ use smithay_client_toolkit::{
         WaylandSurface,
     },
 };
-use std::fs::{File, OpenOptions};
-use std::os::fd::AsRawFd;
-use std::os::unix::{fs::OpenOptionsExt, io::OwnedFd};
-use std::path::Path;
-use std::sync::{Mutex, Arc};
-use std::thread;
 use wayland_client::{
     globals::registry_queue_init,
     protocol::{wl_keyboard, wl_pointer, wl_surface},
@@ -226,23 +217,7 @@ pub async fn setup<E: WgpuConfig>() {
         }
     }
 }
-struct Interface;
 
-impl LibinputInterface for Interface {
-    fn open_restricted(&mut self, path: &Path, flags: i32) -> Result<OwnedFd, i32> {
-        OpenOptions::new()
-            .custom_flags(flags)
-            // Open as Read-Only, always
-            .read(true)
-            .write(false)
-            .open(path)
-            .map(|file| file.into())
-            .map_err(|err| err.raw_os_error().unwrap())
-    }
-    fn close_restricted(&mut self, fd: OwnedFd) {
-        drop(File::from(fd))
-    }
-}
 delegate_compositor!(Wallpaper);
 delegate_output!(Wallpaper);
 

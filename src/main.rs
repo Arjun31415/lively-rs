@@ -16,11 +16,7 @@ use smithay_client_toolkit::{
         WaylandSurface,
     },
 };
-use std::{
-    borrow::Cow,
-    iter,
-    sync::{Arc, Mutex},
-};
+use std::{iter, sync::Mutex};
 use wayland_client::{
     protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface},
     Connection, QueueHandle,
@@ -54,7 +50,6 @@ struct State {
     diffuse_bind_group: Option<wgpu::BindGroup>,
     // NEW!
     camera: Option<Camera>,
-    camera_controller: Option<CameraController>,
     camera_uniform: Option<CameraUniform>,
     camera_buffer: Option<wgpu::Buffer>,
     camera_bind_group: Option<wgpu::BindGroup>,
@@ -67,7 +62,6 @@ static STATE: Mutex<State> = Mutex::new(State {
     diffuse_texture: None,
     diffuse_bind_group: None,
     camera: None,
-    camera_controller: None,
     camera_uniform: None,
     camera_buffer: None,
     camera_bind_group: None,
@@ -235,21 +229,6 @@ impl CameraUniform {
     }
 }
 
-struct CameraController {
-    speed: f32,
-}
-
-impl CameraController {
-    fn new(speed: f32) -> Self {
-        Self { speed }
-    }
-    fn update_camera(&self, camera: &mut Camera) {
-        //use mouse position to update camera
-
-        let cursor = hyprland::data::CursorPosition::get().unwrap();
-        camera.eye = cgmath::Point3::new(cursor.x as f32, cursor.y as f32, 2.0);
-    }
-}
 use xkbcommon::xkb::keysyms;
 impl CompositorHandler for Wallpaper {
     fn scale_factor_changed(
@@ -270,7 +249,7 @@ impl CompositorHandler for Wallpaper {
         _time: u32,
     ) {
         // println!("frame");
-        self.render(qh);
+        self.render(qh).unwrap();
     }
 }
 
@@ -517,7 +496,7 @@ impl Wallpaper {
             width: self.width,
             height: self.height,
             // Wayland is inherently a mailbox system.
-            present_mode: wgpu::PresentMode::Fifo,
+            present_mode: swapchain_capabilities.present_modes[0],
         };
 
         surface.configure(&self.device, &surface_config);
@@ -572,7 +551,6 @@ impl Wallpaper {
             znear: 0.1,
             zfar: 100.0,
         };
-        let camera_controller = CameraController::new(2.0);
 
         let mut camera_uniform = CameraUniform::new();
         camera_uniform.update_view_proj(&camera);
@@ -683,7 +661,6 @@ impl Wallpaper {
             diffuse_texture: Some(diffuse_texture),
             diffuse_bind_group: Some(diffuse_bind_group),
             camera: Some(camera),
-            camera_controller: Some(camera_controller),
             camera_uniform: Some(camera_uniform),
             camera_buffer: Some(camera_buffer),
             camera_bind_group: Some(camera_bind_group),
@@ -695,7 +672,7 @@ impl Wallpaper {
         self.wl_surface.frame(_qh, self.wl_surface.clone());
         self.layer.commit();
         self.wl_surface.commit();
-        self.render(_qh);
+        self.render(_qh).unwrap();
     }
     fn render(&mut self, _qh: &QueueHandle<Self>) -> Result<(), anyhow::Error> {
         let mut state = STATE.lock().unwrap();
