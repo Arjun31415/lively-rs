@@ -29,15 +29,12 @@ use wayland_client::{
     protocol::{wl_keyboard, wl_pointer, wl_surface},
     Connection, Proxy,
 };
-use std::fmt::Debug;
 #[allow(dead_code)]
 pub enum ShaderStage {
     Vertex,
     Fragment,
     Compute,
 }
-pub static POINTER_POS: Mutex<(f64, f64)> = Mutex::new((0.0, 0.0));
-
 pub struct Wallpaper {
     pub registry_state: RegistryState,
     pub seat_state: SeatState,
@@ -219,14 +216,7 @@ pub async fn setup<E: WgpuConfig>() {
         keyboard_focus: false,
         pointer: None,
     };
-    /* let handle = thread::spawn(|| {
-        use std::process;
-        println!("My pid is {}", process::id());
-        track_mouse_movement(layer. );
-        println!("Thread over");
-    }); */
     println!("Starting event loop");
-
     loop {
         event_queue.blocking_dispatch(&mut w).unwrap();
         if w.exit {
@@ -235,7 +225,6 @@ pub async fn setup<E: WgpuConfig>() {
             break;
         }
     }
-    // handle.join().unwrap();
 }
 struct Interface;
 
@@ -253,31 +242,6 @@ impl LibinputInterface for Interface {
     fn close_restricted(&mut self, fd: OwnedFd) {
         drop(File::from(fd))
     }
-}
-impl Wallpaper{
-fn track_mouse_movement(screen_dimensions: (i32, i32)){
-    let mut input = Libinput::new_with_udev(Interface);
-    input.udev_assign_seat("seat0").unwrap();
-    let pollfd = PollFd::new(input.as_raw_fd(), PollFlags::POLLIN);
-    while poll(&mut [pollfd], -1).is_ok() {
-        input.dispatch().unwrap();
-        for event in &mut input {
-            if let input::event::Event::Pointer(LibinputPointerEvent::Motion(pointer_event)) =
-                &event
-            {
-                // println!("({}, {})", pointer_event.dx(), pointer_event.dy());
-                // wait for lock
-                let mut pos = POINTER_POS.lock().unwrap();
-                (*pos).0 += pointer_event.dx();
-                (*pos).1 += pointer_event.dy();
-                let (x, y) = *pos;
-
-                drop(pos);
-            }
-        }
-    }
-    println!("returning from mouse");
-}
 }
 delegate_compositor!(Wallpaper);
 delegate_output!(Wallpaper);

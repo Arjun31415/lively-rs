@@ -41,6 +41,7 @@
             rustfmt
             rustPackages.clippy
             glxinfo
+            # inputs.nixgl.packages.${system}.default
           ];
 
           RUST_SRC_PATH = pkgs.rustPlatform.rustLibSrc;
@@ -49,7 +50,7 @@
         packages =
           {
             lively = pkgs.rustPlatform.buildRustPackage {
-              pname = "wgpu";
+              pname = "lively-rs";
               version = "0.1.0";
 
               src = ./.;
@@ -70,6 +71,7 @@
                 vulkan-headers
                 vulkan-tools
                 mesa.drivers
+                egl-wayland
                 libinput
               ];
               LD_LIBRARY_PATH = "/run/opengl-driver/lib:/run/opengl-driver/32/lib";

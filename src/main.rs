@@ -1,6 +1,6 @@
 mod graphics;
 use crate::graphics::framework::Wallpaper;
-use graphics::framework::POINTER_POS;
+use hyprland::prelude::*;
 use smithay_client_toolkit::{
     compositor::CompositorHandler,
     output::{OutputHandler, OutputState},
@@ -245,9 +245,9 @@ impl CameraController {
     }
     fn update_camera(&self, camera: &mut Camera) {
         //use mouse position to update camera
-        let guard = POINTER_POS.lock().unwrap();
-        let (x, y) = *guard;
-        camera.eye = cgmath::Point3::new(x as f32, y as f32, 2.0);
+
+        let cursor = hyprland::data::CursorPosition::get().unwrap();
+        camera.eye = cgmath::Point3::new(cursor.x as f32, cursor.y as f32, 2.0);
     }
 }
 use xkbcommon::xkb::keysyms;
@@ -269,7 +269,7 @@ impl CompositorHandler for Wallpaper {
         _surface: &wl_surface::WlSurface,
         _time: u32,
     ) {
-        println!("frame");
+        // println!("frame");
         self.render(qh);
     }
 }
@@ -474,9 +474,6 @@ impl PointerHandler for Wallpaper {
             match event.kind {
                 Enter { .. } => {
                     println!("Pointer entered @{:?}", event.position);
-                    let mut pos = graphics::framework::POINTER_POS.lock().unwrap();
-                    *(pos) = event.position;
-                    drop(pos);
                 }
                 Leave { .. } => {
                     println!("Pointer left");
@@ -520,13 +517,14 @@ impl Wallpaper {
             width: self.width,
             height: self.height,
             // Wayland is inherently a mailbox system.
-            present_mode: wgpu::PresentMode::Mailbox,
+            present_mode: wgpu::PresentMode::Fifo,
         };
 
         surface.configure(&self.device, &surface_config);
-        let diffuse_bytes = include_bytes!("happy-tree.png");
+        let diffuse_bytes = include_bytes!("hypr_chan_transparent.png");
         let diffuse_texture =
-            Texture::from_bytes(&device, &queue, diffuse_bytes, "happy-tree.png").unwrap();
+            Texture::from_bytes(&device, &queue, diffuse_bytes, "hypr_chan_transparent.png")
+                .unwrap();
 
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -742,8 +740,9 @@ impl Wallpaper {
             );
             render_pass.draw_indexed(0..state.num_indices, 0, 0..1);
         }
-        let guard = POINTER_POS.lock().unwrap();
-        let (x, y) = *guard;
+        let cursor = hyprland::data::CursorPosition::get().unwrap();
+        let x = cursor.x as f32;
+        let y = cursor.y as f32;
         let camera = state.camera.as_mut().unwrap();
         camera.eye = cgmath::Point3::new((x / 100.0) as f32, (y / 100.0) as f32, 2.0);
         state.camera_uniform.as_mut().unwrap().view_proj =
