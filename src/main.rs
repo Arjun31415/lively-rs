@@ -7,24 +7,19 @@ use smithay_client_toolkit::{
     registry_handlers,
     seat::{
         keyboard::{KeyEvent, KeyboardHandler, Modifiers},
-        pointer::{PointerEvent, PointerEventKind, PointerHandler},
         Capability, SeatHandler, SeatState,
     },
     shell::{
-        wlr_layer::{
-            LayerShellHandler, LayerSurface,
-            LayerSurfaceConfigure,
-        },
+        wlr_layer::{LayerShellHandler, LayerSurface, LayerSurfaceConfigure},
         WaylandSurface,
     },
 };
 use std::borrow::Cow;
 use wayland_client::{
-    protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface},
+    protocol::{wl_keyboard, wl_output, wl_seat, wl_surface},
     Connection, QueueHandle,
 };
 
-use xkbcommon::xkb::keysyms;
 impl CompositorHandler for Wallpaper {
     fn scale_factor_changed(
         &mut self,
@@ -121,23 +116,6 @@ impl SeatHandler for Wallpaper {
         seat: wl_seat::WlSeat,
         capability: Capability,
     ) {
-        if capability == Capability::Keyboard && self.keyboard.is_none() {
-            println!("Set keyboard capability");
-            let keyboard = self
-                .seat_state
-                .get_keyboard(qh, &seat, None)
-                .expect("Failed to create keyboard");
-            self.keyboard = Some(keyboard);
-        }
-
-        if capability == Capability::Pointer && self.pointer.is_none() {
-            println!("Set pointer capability");
-            let pointer = self
-                .seat_state
-                .get_pointer(qh, &seat)
-                .expect("Failed to create pointer");
-            self.pointer = Some(pointer);
-        }
     }
 
     fn remove_capability(
@@ -147,15 +125,6 @@ impl SeatHandler for Wallpaper {
         _: wl_seat::WlSeat,
         capability: Capability,
     ) {
-        if capability == Capability::Keyboard && self.keyboard.is_some() {
-            println!("Unset keyboard capability");
-            self.keyboard.take().unwrap().release();
-        }
-
-        if capability == Capability::Pointer && self.pointer.is_some() {
-            println!("Unset pointer capability");
-            self.pointer.take().unwrap().release();
-        }
     }
 
     fn remove_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}
@@ -172,10 +141,6 @@ impl KeyboardHandler for Wallpaper {
         _: &[u32],
         keysyms: &[u32],
     ) {
-        if self.layer.wl_surface() == surface {
-            println!("Keyboard focus on window with pressed syms: {keysyms:?}");
-            self.keyboard_focus = true;
-        }
     }
 
     fn leave(
@@ -186,10 +151,6 @@ impl KeyboardHandler for Wallpaper {
         surface: &wl_surface::WlSurface,
         _: u32,
     ) {
-        if self.layer.wl_surface() == surface {
-            println!("Release keyboard focus on window");
-            self.keyboard_focus = false;
-        }
     }
 
     fn press_key(
@@ -200,11 +161,11 @@ impl KeyboardHandler for Wallpaper {
         _: u32,
         event: KeyEvent,
     ) {
-        println!("Key press: {event:?}");
+        // println!("Key press: {event:?}");
         // press 'esc' to exit
-        if event.keysym == keysyms::KEY_Escape {
-            self.exit = true;
-        }
+        // if event.keysym == keysyms::KEY_Escape {
+        //     self.exit = true;
+        // }
     }
 
     fn release_key(
@@ -227,52 +188,6 @@ impl KeyboardHandler for Wallpaper {
         modifiers: Modifiers,
     ) {
         println!("Update modifiers: {modifiers:?}");
-    }
-}
-
-impl PointerHandler for Wallpaper {
-    fn pointer_frame(
-        &mut self,
-        _conn: &Connection,
-        _qh: &QueueHandle<Self>,
-        _pointer: &wl_pointer::WlPointer,
-        events: &[PointerEvent],
-    ) {
-        use PointerEventKind::*;
-        for event in events {
-            // Ignore events for other surfaces
-            if &event.surface != self.layer.wl_surface() { continue;
-            }
-            println!("event");
-            match event.kind {
-                Enter { .. } => {
-                    println!("Pointer entered @{:?}", event.position);
-                    let mut pos = graphics::framework::POINTER_POS.lock().unwrap();
-                    *(pos) = event.position;
-                    drop(pos);
-                }
-                Leave { .. } => {
-                    println!("Pointer left");
-                }
-                Motion { .. } => {
-                    println!("Pointer moving @{:?}", event.position)
-                }
-                Press { button, .. } => {
-                    println!("Press {:x} @ {:?}", button, event.position);
-                    self.shift = self.shift.xor(Some(0));
-                }
-                Release { button, .. } => {
-                    println!("Release {:x} @ {:?}", button, event.position);
-                }
-                Axis {
-                    horizontal,
-                    vertical,
-                    ..
-                } => {
-                    println!("Scroll H:{horizontal:?}, V:{vertical:?}");
-                }
-            }
-        }
     }
 }
 

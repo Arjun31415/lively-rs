@@ -1,15 +1,12 @@
 // taken from https://github.com/gfx-rs/wgpu/blob/trunk/examples/common/src/framework.rs
-use input::event::pointer::PointerEvent as LibinputPointerEvent;
-use input::{Libinput, LibinputInterface};
-use nix::poll::{poll, PollFd, PollFlags};
+use input::LibinputInterface;
 use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
     WaylandDisplayHandle, WaylandWindowHandle,
 };
 use smithay_client_toolkit::{
     compositor::CompositorState,
-    delegate_compositor, delegate_keyboard, delegate_layer, delegate_output, delegate_pointer,
-    delegate_registry, delegate_seat,
+    delegate_compositor, delegate_layer, delegate_output, delegate_registry, delegate_seat,
     output::OutputState,
     registry::RegistryState,
     seat::SeatState,
@@ -19,16 +16,10 @@ use smithay_client_toolkit::{
     },
 };
 use std::fs::{File, OpenOptions};
-use std::os::fd::AsRawFd;
 use std::os::unix::{fs::OpenOptionsExt, io::OwnedFd};
 use std::path::Path;
-use std::sync::Mutex;
 use std::thread;
-use wayland_client::{
-    globals::registry_queue_init,
-    protocol::{wl_keyboard, wl_pointer, wl_surface},
-    Connection, Proxy,
-};
+use wayland_client::{globals::registry_queue_init, protocol::wl_surface, Connection, Proxy};
 
 #[allow(dead_code)]
 pub enum ShaderStage {
@@ -36,7 +27,7 @@ pub enum ShaderStage {
     Fragment,
     Compute,
 }
-pub static POINTER_POS: Mutex<(f64, f64)> = Mutex::new((0.0, 0.0));
+// pub static POINTER_POS: Mutex<(f64, f64)> = Mutex::new((0.0, 0.0));
 
 pub struct Wallpaper {
     pub registry_state: RegistryState,
@@ -51,12 +42,10 @@ pub struct Wallpaper {
     pub device: wgpu::Device,
     pub surface: wgpu::Surface,
     pub wl_surface: wl_surface::WlSurface,
+    pub mouse_pos_rx: std::sync::mpsc::Receiver<(i64, i64)>,
 
-    pub shift: Option<u32>,
+    // pub shift: Option<u32>,
     pub layer: LayerSurface,
-    pub keyboard: Option<wl_keyboard::WlKeyboard>,
-    pub keyboard_focus: bool,
-    pub pointer: Option<wl_pointer::WlPointer>,
 }
 pub trait WgpuConfig: 'static + Sized {
     fn optional_features() -> wgpu::Features {
@@ -200,6 +189,9 @@ pub async fn setup<E: WgpuConfig>() {
         .await
         .expect("Unable to find a suitable GPU adapter!");
 
+    let (tx, rx) = std::sync::mpsc::channel::<(i64, i64)>();
+
+    let tx_clone = tx.clone();
     let mut w = Wallpaper {
         registry_state: RegistryState::new(&globals),
         seat_state: SeatState::new(&globals, &qh),
@@ -213,22 +205,24 @@ pub async fn setup<E: WgpuConfig>() {
         surface,
         adapter,
         queue,
-        shift: None,
+        // shift: None,
         layer,
-        keyboard: None,
-        keyboard_focus: false,
-        pointer: None,
+        mouse_pos_rx: rx,
+        // keyboard: None,
+        // keyboard_focus: false,
+        // pointer: None,
     };
-    let handle = thread::spawn(|| {
+    let handle = thread::spawn(move || {
         use std::process;
         println!("My pid is {}", process::id());
-        track_mouse_movement();
+        track_mouse_movement(tx_clone);
         println!("Thread over");
     });
     println!("Starting event loop");
 
     loop {
         event_queue.blocking_dispatch(&mut w).unwrap();
+
         if w.exit {
             log::info!("Exiting");
             // TODO: destroy the thread handle
@@ -255,34 +249,19 @@ impl LibinputInterface for Interface {
     }
 }
 
-fn track_mouse_movement() {
-    let mut input = Libinput::new_with_udev(Interface);
-    input.udev_assign_seat("seat0").unwrap();
-    let pollfd = PollFd::new(input.as_raw_fd(), PollFlags::POLLIN);
-    while poll(&mut [pollfd], -1).is_ok() {
-        input.dispatch().unwrap();
-        for event in &mut input {
-            if let input::event::Event::Pointer(LibinputPointerEvent::Motion(pointer_event)) =
-                &event
-            {
-                // println!("({}, {})", pointer_event.dx(), pointer_event.dy());
-                // wait for lock
-                let mut pos = POINTER_POS.lock().unwrap();
-                (*pos).0 += pointer_event.dx();
-                (*pos).1 += pointer_event.dy();
-                drop(pos);
-            }
-        }
+fn track_mouse_movement(tx: std::sync::mpsc::Sender<(i64, i64)>) {
+    loop {
+        let cursor_pos =
+            <hyprland::data::CursorPosition as hyprland::shared::HyprData>::get().unwrap();
+        tx.send((cursor_pos.x, cursor_pos.y))
+            .expect("send should succeed");
     }
-    println!("returning from mouse");
+    // println!("returning from mouse");
 }
 delegate_compositor!(Wallpaper);
 delegate_output!(Wallpaper);
 
 delegate_seat!(Wallpaper);
-delegate_keyboard!(Wallpaper);
-delegate_pointer!(Wallpaper);
-
 delegate_layer!(Wallpaper);
 
 delegate_registry!(Wallpaper);
