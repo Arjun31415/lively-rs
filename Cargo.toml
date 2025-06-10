@@ -6,17 +6,15 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bytemuck = "1.13.1"
+bytemuck = { version = "1.13.1", features = [ "pod_saturating", "derive" ] }
 env_logger = "0.10.0"
 input = "0.8.2"
 log = "0.4.19"
 nanorand = "0.7.0"
-nix = "0.26.2"
 pollster = "0.3.0"
-raw-window-handle = "0.5.2"
-smithay-client-toolkit = { version = "0.17.0" }
-wayland-backend = { version = "0.1.2", features = ["client_system"] }
-wayland-client = { version = "0.30.2", features = ["calloop"] }
-wgpu = "0.15.1"
-xkbcommon = "0.5.0"
+raw-window-handle = "0.6.2"
+smithay-client-toolkit = { version = "0.19.2", default-features = false, features = ["calloop", "pkg-config"] }
+wayland-backend = { version = "0.3.10", features = ["client_system"] }
+wayland-client = { version = "0.31.10" }
+wgpu = "25.0.2"
 hyprland = "0.4.0-beta.1"

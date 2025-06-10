@@ -1,8 +1,6 @@
 // taken from https://github.com/gfx-rs/wgpu/blob/trunk/examples/common/src/framework.rs
-use input::LibinputInterface;
 use raw_window_handle::{
-    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
-    WaylandDisplayHandle, WaylandWindowHandle,
+    RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle,
 };
 use smithay_client_toolkit::{
     compositor::CompositorState,
@@ -11,23 +9,26 @@ use smithay_client_toolkit::{
     registry::RegistryState,
     seat::SeatState,
     shell::{
-        wlr_layer::{Anchor, KeyboardInteractivity, Layer, LayerShell, LayerSurface},
         WaylandSurface,
+        wlr_layer::{Anchor, KeyboardInteractivity, Layer, LayerShell, LayerSurface},
     },
 };
-use std::fs::{File, OpenOptions};
-use std::os::unix::{fs::OpenOptionsExt, io::OwnedFd};
-use std::path::Path;
+use std::ptr::NonNull;
 use std::thread;
-use wayland_client::{globals::registry_queue_init, protocol::wl_surface, Connection, Proxy};
+use std::time;
+use wayland_client::{Connection, Proxy, globals::registry_queue_init, protocol::wl_surface};
 
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct MouseUniform {
+    pub pos: [f32; 2],
+}
 #[allow(dead_code)]
 pub enum ShaderStage {
     Vertex,
     Fragment,
     Compute,
 }
-// pub static POINTER_POS: Mutex<(f64, f64)> = Mutex::new((0.0, 0.0));
 
 pub struct Wallpaper {
     pub registry_state: RegistryState,
@@ -40,10 +41,12 @@ pub struct Wallpaper {
     pub adapter: wgpu::Adapter,
     pub queue: wgpu::Queue,
     pub device: wgpu::Device,
-    pub surface: wgpu::Surface,
+    pub surface: wgpu::Surface<'static>,
     pub wl_surface: wl_surface::WlSurface,
     pub mouse_pos_rx: std::sync::mpsc::Receiver<(i64, i64)>,
-
+    pub mouse_buf: wgpu::Buffer,
+    pub mouse_bind_group: wgpu::BindGroup,
+    pub mouse_bind_group_layout: wgpu::BindGroupLayout,
     // pub shift: Option<u32>,
     pub layer: LayerSurface,
 }
@@ -82,7 +85,7 @@ pub async fn setup<E: WgpuConfig>() {
     // This app uses the wlr layer shell, which may not be available with every compositor.
     let layer_shell = LayerShell::bind(&globals, &qh).expect("layer shell is not available");
     // Initialize wgpu
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         backends: wgpu::Backends::all(),
         ..Default::default()
     });
@@ -95,40 +98,21 @@ pub async fn setup<E: WgpuConfig>() {
         Some("simple_layer"),
         None,
     );
-    // Create the raw window handle for the surface.
-    let handle = {
-        let mut handle = WaylandDisplayHandle::empty();
-        handle.display = conn.backend().display_ptr() as *mut _;
-        let display_handle = RawDisplayHandle::Wayland(handle);
+    let raw_display_handle = RawDisplayHandle::Wayland(WaylandDisplayHandle::new(
+        NonNull::new(conn.backend().display_ptr() as *mut _).unwrap(),
+    ));
+    let raw_window_handle = RawWindowHandle::Wayland(WaylandWindowHandle::new(
+        NonNull::new(layer.wl_surface().id().as_ptr() as *mut _).unwrap(),
+    ));
 
-        let mut handle = WaylandWindowHandle::empty();
-        let wl_surface = layer.wl_surface();
-        handle.surface = wl_surface.id().as_ptr() as *mut _;
-        let window_handle = RawWindowHandle::Wayland(handle);
-
-        /// https://github.com/rust-windowing/raw-window-handle/issues/49
-        struct YesRawWindowHandleImplementingHasRawWindowHandleIsUnsound(
-            RawDisplayHandle,
-            RawWindowHandle,
-        );
-
-        unsafe impl HasRawDisplayHandle for YesRawWindowHandleImplementingHasRawWindowHandleIsUnsound {
-            fn raw_display_handle(&self) -> RawDisplayHandle {
-                self.0
-            }
-        }
-
-        unsafe impl HasRawWindowHandle for YesRawWindowHandleImplementingHasRawWindowHandleIsUnsound {
-            fn raw_window_handle(&self) -> RawWindowHandle {
-                self.1
-            }
-        }
-
-        YesRawWindowHandleImplementingHasRawWindowHandleIsUnsound(display_handle, window_handle)
+    let surface = unsafe {
+        instance
+            .create_surface_unsafe(wgpu::SurfaceTargetUnsafe::RawHandle {
+                raw_display_handle,
+                raw_window_handle,
+            })
+            .unwrap()
     };
-
-    // A layer surface is created from a surface.
-    let surface = unsafe { instance.create_surface(&handle).unwrap() };
 
     // Pick a supported adapter
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
@@ -136,7 +120,7 @@ pub async fn setup<E: WgpuConfig>() {
         ..Default::default()
     }))
     .expect("Failed to find suitable adapter");
-    let (_device, _queue) = pollster::block_on(adapter.request_device(&Default::default(), None))
+    let (_device, _queue) = pollster::block_on(adapter.request_device(&Default::default()))
         .expect("Failed to request device");
     // Configure the layer surface, providing things like the anchor on screen, desired size and the keyboard
     // interactivity
@@ -176,19 +160,48 @@ pub async fn setup<E: WgpuConfig>() {
     // Make sure we use the texture resolution limits from the adapter, so we can support images the size of the surface.
     let needed_limits = E::required_limits().using_resolution(adapter.limits());
 
-    let trace_dir = std::env::var("WGPU_TRACE");
     let (device, queue) = adapter
         .request_device(
             &wgpu::DeviceDescriptor {
                 label: None,
-                features: (optional_features & adapter_features) | required_features,
-                limits: needed_limits,
+                required_features: (optional_features & adapter_features) | required_features,
+                required_limits: needed_limits,
+                memory_hints: Default::default(),
+                trace: wgpu::Trace::Off,
             },
-            trace_dir.ok().as_ref().map(std::path::Path::new),
         )
         .await
         .expect("Unable to find a suitable GPU adapter!");
+    let mouse_buf = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("Mouse Uniform Buffer"),
+        size: std::mem::size_of::<MouseUniform>() as u64,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
 
+    let mouse_bind_group_layout =
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Mouse Bind Group Layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+
+    let mouse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("Mouse Bind Group"),
+        layout: &mouse_bind_group_layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: mouse_buf.as_entire_binding(),
+        }],
+    });
     let (tx, rx) = std::sync::mpsc::channel::<(i64, i64)>();
 
     let tx_clone = tx.clone();
@@ -205,12 +218,11 @@ pub async fn setup<E: WgpuConfig>() {
         surface,
         adapter,
         queue,
-        // shift: None,
         layer,
         mouse_pos_rx: rx,
-        // keyboard: None,
-        // keyboard_focus: false,
-        // pointer: None,
+        mouse_buf: mouse_buf,
+        mouse_bind_group: mouse_bind_group,
+        mouse_bind_group_layout: mouse_bind_group_layout,
     };
     let handle = thread::spawn(move || {
         use std::process;
@@ -231,36 +243,23 @@ pub async fn setup<E: WgpuConfig>() {
     }
     handle.join().unwrap();
 }
-struct Interface;
-
-impl LibinputInterface for Interface {
-    fn open_restricted(&mut self, path: &Path, flags: i32) -> Result<OwnedFd, i32> {
-        OpenOptions::new()
-            .custom_flags(flags)
-            // Open as Read-Only, always
-            .read(true)
-            .write(false)
-            .open(path)
-            .map(|file| file.into())
-            .map_err(|err| err.raw_os_error().unwrap())
-    }
-    fn close_restricted(&mut self, fd: OwnedFd) {
-        drop(File::from(fd))
-    }
-}
-
 fn track_mouse_movement(tx: std::sync::mpsc::Sender<(i64, i64)>) {
+    let mut last_pos = (-1, -1);
     loop {
         let cursor_pos =
             <hyprland::data::CursorPosition as hyprland::shared::HyprData>::get().unwrap();
-        tx.send((cursor_pos.x, cursor_pos.y))
-            .expect("send should succeed");
+        if last_pos != (cursor_pos.x, cursor_pos.y) {
+            last_pos = (cursor_pos.x, cursor_pos.y);
+            tx.send((cursor_pos.x, cursor_pos.y))
+                .expect("send should succeed");
+
+            let ten_millis = time::Duration::from_millis(25);
+            thread::sleep(ten_millis);
+        }
     }
-    // println!("returning from mouse");
 }
 delegate_compositor!(Wallpaper);
 delegate_output!(Wallpaper);
-
 delegate_seat!(Wallpaper);
 delegate_layer!(Wallpaper);
 
