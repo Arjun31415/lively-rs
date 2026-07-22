@@ -1,5 +1,12 @@
 mod graphics;
-use crate::graphics::framework::Wallpaper;
+mod mouse;
+mod web_mode;
+mod audio;
+
+use clap::{Parser, ValueEnum};
+use std::path::PathBuf;
+
+use crate::graphics::framework::WgslWallpaper;
 use graphics::framework::MouseUniform;
 use smithay_client_toolkit::{
     compositor::CompositorHandler,
@@ -17,7 +24,7 @@ use wayland_client::{
     Connection, QueueHandle,
     protocol::{wl_output, wl_seat, wl_surface},
 };
-impl CompositorHandler for Wallpaper {
+impl CompositorHandler for WgslWallpaper {
     fn scale_factor_changed(
         &mut self,
         _conn: &Connection,
@@ -68,7 +75,7 @@ impl CompositorHandler for Wallpaper {
     }
 }
 
-impl OutputHandler for Wallpaper {
+impl OutputHandler for WgslWallpaper {
     fn output_state(&mut self) -> &mut OutputState {
         &mut self.output_state
     }
@@ -98,7 +105,7 @@ impl OutputHandler for Wallpaper {
     }
 }
 
-impl LayerShellHandler for Wallpaper {
+impl LayerShellHandler for WgslWallpaper {
     fn closed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _layer: &LayerSurface) {
         self.exit = true;
     }
@@ -127,7 +134,7 @@ impl LayerShellHandler for Wallpaper {
     }
 }
 
-impl SeatHandler for Wallpaper {
+impl SeatHandler for WgslWallpaper {
     fn seat_state(&mut self) -> &mut SeatState {
         &mut self.seat_state
     }
@@ -155,7 +162,7 @@ impl SeatHandler for Wallpaper {
     fn remove_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}
 }
 
-impl Wallpaper {
+impl WgslWallpaper {
     pub fn draw(&mut self, _qh: &QueueHandle<Self>) {
         let adapter = &self.adapter;
         let surface = &self.surface;
@@ -259,14 +266,44 @@ impl Wallpaper {
     }
 }
 
-impl ProvidesRegistryState for Wallpaper {
+impl ProvidesRegistryState for WgslWallpaper {
     fn registry(&mut self) -> &mut RegistryState {
         &mut self.registry_state
     }
     registry_handlers![OutputState, SeatState];
 }
-impl graphics::framework::WgpuConfig for Wallpaper {}
+impl graphics::framework::WgpuConfig for WgslWallpaper {}
+#[derive(ValueEnum, Clone, Debug, PartialEq)]
+enum Mode {
+    Web,
+    Wgsl,
+}
 
+#[derive(Parser, Debug)]
+#[command(name = "WallpaperEngine")]
+pub struct Cli {
+    #[arg(short, long, value_enum, default_value_t = Mode::Wgsl)]
+    mode: Mode,
+
+    #[arg(long, default_value = "fluid-sim/index.html")]
+    html_path: PathBuf,
+
+    #[arg(long, default_value = "HDMI-A-1")]
+    monitor: Option<String>,
+
+    #[arg(long)]
+    debug: bool,
+}
 fn main() {
-    pollster::block_on(graphics::framework::setup::<Wallpaper>());
+    let cli = Cli::parse();
+
+    match cli.mode {
+        Mode::Wgsl => {
+            pollster::block_on(graphics::framework::setup::<WgslWallpaper>(cli.monitor));
+        }
+        Mode::Web => {
+            // The new GTK4/WebKit setup
+            web_mode::run(cli);
+        }
+    }
 }

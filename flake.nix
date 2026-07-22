@@ -38,60 +38,66 @@
           inputsFrom = [config.packages.foo];
           packages = with pkgs; [
             pre-commit
-            glxinfo
+            mesa-demos
             vscode-extensions.llvm-org.lldb-vscode
             taplo
             glib-networking
-            inputs.nixgl.packages.${system}.default
+            alsa-lib
+            pipewire
           ];
           LD_LIBRARY_PATH = "/run/opengl-driver/lib:/run/opengl-driver-32/lib";
           GIO_MODULE_DIR = "${pkgs.glib-networking}/lib/gio/modules/";
+          LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
         };
 
-        packages =
-          {
-            foo = rustPlatform.buildRustPackage {
-              pname = "foo";
-              version = "0.1.0";
-              src = ./.;
-              cargoLock = {
-                lockFile = ./Cargo.lock;
-              };
-              GIO_MODULE_DIR = "${pkgs.glib-networking}/lib/gio/modules/";
-              LD_LIBRARY_PATH = "/run/opengl-driver/lib:/run/opengl-driver-32/lib";
-
-              nativeBuildInputs = with pkgs; [
-                pkg-config
-                wrapGAppsHook4
-              ];
-              buildInputs = with pkgs; [
-                libGL
-                libGLU
-                mesa
-                mesa.drivers
-                gobject-introspection
-                gnutls
-                webkitgtk_6_0
-                libsoup_3
-                glib
-                glib-networking
-                libxml2
-                gettext
-                cairo
-                gtk4
-                gtk4-layer-shell
-                egl-wayland
-                wayland
-                vulkan-loader
-                vulkan-validation-layers
-                vulkan-headers
-                vulkan-tools
-                libinput
-                libxkbcommon
-              ];
+        packages = {
+          foo = rustPlatform.buildRustPackage {
+            pname = "foo";
+            version = "0.1.0";
+            src = ./.;
+            cargoLock = {
+              lockFile = ./Cargo.lock;
             };
-          }
-          // {default = config.packages.foo;};
+            GIO_MODULE_DIR = "${pkgs.glib-networking}/lib/gio/modules/";
+            LD_LIBRARY_PATH = "/run/opengl-driver/lib:/run/opengl-driver-32/lib";
+            LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
+
+            nativeBuildInputs = with pkgs; [
+              pkg-config
+              wrapGAppsHook4
+              rustPlatform.bindgenHook
+            ];
+
+            buildInputs = with pkgs; [
+              libGL
+              libGLU
+              mesa
+              mesa.drivers
+              gobject-introspection
+              gnutls
+              webkitgtk_6_0
+              libsoup_3
+              glib
+              glib-networking
+              libxml2
+              gettext
+              cairo
+              gtk4
+              gtk4-layer-shell
+              egl-wayland
+              wayland
+              vulkan-loader
+              vulkan-validation-layers
+              vulkan-headers
+              vulkan-tools
+              libinput
+              libxkbcommon
+              alsa-lib
+              libclang
+              pipewire
+            ];
+          };
+        };
 
         formatter = pkgs.alejandra;
       };

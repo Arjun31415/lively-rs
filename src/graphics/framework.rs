@@ -14,8 +14,6 @@ use smithay_client_toolkit::{
     },
 };
 use std::ptr::NonNull;
-use std::thread;
-use std::time;
 use wayland_client::{Connection, Proxy, globals::registry_queue_init, protocol::wl_surface};
 
 #[repr(C)]
@@ -30,7 +28,7 @@ pub enum ShaderStage {
     Compute,
 }
 
-pub struct Wallpaper {
+pub struct WgslWallpaper {
     pub registry_state: RegistryState,
     pub seat_state: SeatState,
     pub output_state: OutputState,
@@ -69,7 +67,7 @@ pub trait WgpuConfig: 'static + Sized {
     }
 }
 
-pub async fn setup<E: WgpuConfig>() {
+pub async fn setup<E: WgpuConfig>(monitor_name: Option<String>) {
     env_logger::init();
     // All Wayland apps start by connecting the compositor (server).
     let conn = Connection::connect_to_env().unwrap();
@@ -161,15 +159,13 @@ pub async fn setup<E: WgpuConfig>() {
     let needed_limits = E::required_limits().using_resolution(adapter.limits());
 
     let (device, queue) = adapter
-        .request_device(
-            &wgpu::DeviceDescriptor {
-                label: None,
-                required_features: (optional_features & adapter_features) | required_features,
-                required_limits: needed_limits,
-                memory_hints: Default::default(),
-                trace: wgpu::Trace::Off,
-            },
-        )
+        .request_device(&wgpu::DeviceDescriptor {
+            label: None,
+            required_features: (optional_features & adapter_features) | required_features,
+            required_limits: needed_limits,
+            memory_hints: Default::default(),
+            trace: wgpu::Trace::Off,
+        })
         .await
         .expect("Unable to find a suitable GPU adapter!");
     let mouse_buf = device.create_buffer(&wgpu::BufferDescriptor {
@@ -205,7 +201,7 @@ pub async fn setup<E: WgpuConfig>() {
     let (tx, rx) = std::sync::mpsc::channel::<(i64, i64)>();
 
     let tx_clone = tx.clone();
-    let mut w = Wallpaper {
+    let mut w = WgslWallpaper {
         registry_state: RegistryState::new(&globals),
         seat_state: SeatState::new(&globals, &qh),
         output_state: OutputState::new(&globals, &qh),
@@ -224,12 +220,7 @@ pub async fn setup<E: WgpuConfig>() {
         mouse_bind_group: mouse_bind_group,
         mouse_bind_group_layout: mouse_bind_group_layout,
     };
-    let handle = thread::spawn(move || {
-        use std::process;
-        println!("My pid is {}", process::id());
-        track_mouse_movement(tx_clone);
-        println!("Thread over");
-    });
+    let handle = crate::mouse::start_mouse_tracking(monitor_name, tx_clone);
     println!("Starting event loop");
 
     loop {
@@ -243,24 +234,10 @@ pub async fn setup<E: WgpuConfig>() {
     }
     handle.join().unwrap();
 }
-fn track_mouse_movement(tx: std::sync::mpsc::Sender<(i64, i64)>) {
-    let mut last_pos = (-1, -1);
-    loop {
-        let cursor_pos =
-            <hyprland::data::CursorPosition as hyprland::shared::HyprData>::get().unwrap();
-        if last_pos != (cursor_pos.x, cursor_pos.y) {
-            last_pos = (cursor_pos.x, cursor_pos.y);
-            tx.send((cursor_pos.x, cursor_pos.y))
-                .expect("send should succeed");
 
-            let ten_millis = time::Duration::from_millis(25);
-            thread::sleep(ten_millis);
-        }
-    }
-}
-delegate_compositor!(Wallpaper);
-delegate_output!(Wallpaper);
-delegate_seat!(Wallpaper);
-delegate_layer!(Wallpaper);
+delegate_compositor!(WgslWallpaper);
+delegate_output!(WgslWallpaper);
+delegate_seat!(WgslWallpaper);
+delegate_layer!(WgslWallpaper);
 
-delegate_registry!(Wallpaper);
+delegate_registry!(WgslWallpaper);
