@@ -282,7 +282,7 @@ enum Mode {
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "WallpaperEngine")]
+#[command(name = "lively-rs")]
 pub struct Cli {
     #[arg(short, long, value_enum, default_value_t = Mode::Wgsl)]
     mode: Mode,
@@ -304,7 +304,6 @@ fn main() {
             pollster::block_on(graphics::framework::setup::<WgslWallpaper>(cli.monitor));
         }
         Mode::Web => {
-            // The new GTK4/WebKit setup
             web_mode::run(cli);
         }
     }
