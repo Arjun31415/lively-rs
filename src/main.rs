@@ -164,6 +164,11 @@ impl SeatHandler for WgslWallpaper {
 }
 
 impl WgslWallpaper {
+    pub fn load_shader(&self, filename: &str) -> String {
+        let path = self.wallpaper_path.join(filename);
+        std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("Failed to read shader file at {path:?}: {e}"))
+    }
     pub fn draw(&mut self, _qh: &QueueHandle<Self>) {
         let adapter = &self.adapter;
         let surface = &self.surface;
@@ -173,9 +178,12 @@ impl WgslWallpaper {
         let swapchain_capabilities = surface.get_capabilities(&adapter);
         let swapchain_format = swapchain_capabilities.formats[0];
         // Load the shaders from disk
+
+        let shader_src = self.load_shader("shader.wgsl");
+
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: None,
-            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("shader.wgsl"))),
+            source: wgpu::ShaderSource::Wgsl(Cow::Owned(shader_src)),
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Main Pipeline Layout"),
@@ -287,21 +295,27 @@ pub struct Cli {
     #[arg(short, long, value_enum, default_value_t = Mode::Wgsl)]
     mode: Mode,
 
-    #[arg(long, default_value = "fluid-sim/index.html")]
-    html_path: PathBuf,
+    #[arg(long, required = true)]
+    wallpaper_path: PathBuf,
 
     #[arg(long, default_value = "HDMI-A-1")]
     monitor: Option<String>,
 
     #[arg(long)]
     debug: bool,
+    /// Enable audio-reactive splats (calls livelyAudioListener via the monitor capture)
+    #[arg(long)]
+    audio: bool,
 }
 fn main() {
     let cli = Cli::parse();
 
     match cli.mode {
         Mode::Wgsl => {
-            pollster::block_on(graphics::framework::setup::<WgslWallpaper>(cli.monitor));
+            pollster::block_on(graphics::framework::setup::<WgslWallpaper>(
+                cli.monitor,
+                cli.wallpaper_path,
+            ));
         }
         Mode::Web => {
             web_mode::run(cli);

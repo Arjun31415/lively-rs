@@ -31,24 +31,6 @@ const POINTER_HOOK_JS: &str = r#"
     el.dispatchEvent(new PointerEvent('pointermove', opts));
     el.dispatchEvent(new MouseEvent('mousemove', opts));
   };
-
-  // Triggers random fluid simulation splats when music plays
-  window.__triggerAudioSplat = function(intensity) {
-    if (typeof multipleSplats === 'function') {
-      const count = Math.min(Math.max(1, Math.floor(intensity * 15)), 6);
-      multipleSplats(count);
-    } else if (typeof splat === 'function') {
-      const count = Math.min(Math.max(1, Math.floor(intensity * 10)), 4);
-      for (let i = 0; i < count; i++) {
-        const x = Math.random();
-        const y = Math.random();
-        const dx = (Math.random() - 0.5) * 1000;
-        const dy = (Math.random() - 0.5) * 1000;
-        const color = [Math.random() * 10, Math.random() * 10, Math.random() * 10];
-        splat(x, y, dx, dy, color);
-      }
-    }
-  };
 })();
 "#;
 
@@ -85,13 +67,13 @@ fn build_ui(app: &gtk4::Application, args: &Cli) {
         let display = gdk::Display::default().expect("No display found");
         let monitors = display.monitors();
         for i in 0..monitors.n_items() {
-            if let Some(mon) = monitors.item(i).and_downcast::<gdk::Monitor>() {
-                if mon.connector().as_deref() == Some(&target_mon) {
-                    window.set_monitor(Some(&mon));
-                    let geo = mon.geometry();
-                    monitor_offset = (geo.x() as f64, geo.y() as f64);
-                    break;
-                }
+            if let Some(mon) = monitors.item(i).and_downcast::<gdk::Monitor>()
+                && mon.connector().as_deref() == Some(target_mon)
+            {
+                window.set_monitor(Some(&mon));
+                let geo = mon.geometry();
+                monitor_offset = (geo.x() as f64, geo.y() as f64);
+                break;
             }
         }
     }
@@ -120,25 +102,45 @@ fn build_ui(app: &gtk4::Application, args: &Cli) {
 
     window.set_child(Some(&webview));
 
-    if args.debug {
-        if let Some(inspector) = webview.inspector() {
-            webview.connect_load_changed(move |_, event| {
-                if event == webkit6::LoadEvent::Finished {
-                    inspector.show();
-                }
-            });
-        }
+    if args.debug
+        && let Some(inspector) = webview.inspector()
+    {
+        webview.connect_load_changed(move |_, event| {
+            if event == webkit6::LoadEvent::Finished {
+                inspector.show();
+            }
+        });
     }
-
-    let abs_html = fs::canonicalize(&args.html_path).unwrap_or_else(|_| {
-        panic!("HTML file not found at: {:?}", args.html_path);
+    if args.audio {
+        let webview_for_audio_setup = webview.clone();
+        webview.connect_load_changed(move |_, event| {
+            if event == webkit6::LoadEvent::Finished {
+                webview_for_audio_setup.evaluate_javascript(
+                    "window.livelyPropertyListener && window.livelyPropertyListener('audioReact', true);",
+                    None,
+                    None,
+                    None::<&gio::Cancellable>,
+                    |_| {},
+                );
+            }
+        });
+    }
+    let html_path = args.wallpaper_path.join("index.html");
+    let abs_html = fs::canonicalize(&html_path).unwrap_or_else(|_| {
+        panic!("HTML file not found at: {:?}", html_path);
     });
     let uri = format!("file://{}", abs_html.to_string_lossy());
     webview.load_uri(&uri);
 
     let (tx, rx) = std::sync::mpsc::channel::<(i64, i64)>();
-    let (tx_audio, rx_audio) = std::sync::mpsc::channel::<f32>();
-    crate::audio::start_audio_tracking(tx_audio);
+    let spectrum = if args.audio {
+        let spectrum = crate::audio::new_spectrum_handle();
+        crate::audio::start_audio_tracking(spectrum.clone());
+        Some(spectrum)
+    } else {
+        None
+    };
+
     crate::mouse::start_mouse_tracking(args.monitor.clone(), tx);
     let mut last_pos = (0.0f64, 0.0f64);
     let debug = args.debug;
@@ -147,23 +149,29 @@ fn build_ui(app: &gtk4::Application, args: &Cli) {
         while let Ok((x, y)) = rx.try_recv() {
             last_pos = (x as f64, y as f64);
         }
-        // Check for incoming audio beats
-        let mut audio_peak: Option<f32> = None;
-        while let Ok(intensity) = rx_audio.try_recv() {
-            audio_peak = Some(audio_peak.map_or(intensity, |prev| prev.max(intensity)));
-        }
 
         let (x, y) = last_pos;
         let mut script = format!("window.__setPointer && window.__setPointer({x}, {y});");
 
-        if let Some(intensity) = audio_peak {
+        if let Some(ref spectrum) = spectrum {
+            // Always reads whatever the audio thread most recently wrote —
+            // never stale, never backlogged.
+            let bins = spectrum.lock().unwrap();
             if debug {
-                println!("Audio peak detected: {intensity}");
+                println!("Audio level (bin 0): {}", bins[0]);
             }
+            let audio_array = format!(
+                "[{}]",
+                bins.iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            );
             script.push_str(&format!(
-                "window.__triggerAudioSplat && window.__triggerAudioSplat({intensity});"
+                "window.livelyAudioListener && window.livelyAudioListener({audio_array});"
             ));
         }
+
         webview.evaluate_javascript(&script, None, None, None::<&gio::Cancellable>, |_| {});
         glib::ControlFlow::Continue
     });

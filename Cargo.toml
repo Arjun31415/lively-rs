@@ -24,3 +24,4 @@ clap = { version = "4.6.3", features = ["derive"] }
 gtk4 = { version = "0.11.4", features = ["v4_10"] }
 cpal = { version = "0.18.1", features = ["pipewire"] }
 ctrlc = "3.5.2"
+rustfft = "6.4.1"

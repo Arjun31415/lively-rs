@@ -13,7 +13,7 @@ use smithay_client_toolkit::{
         wlr_layer::{Anchor, KeyboardInteractivity, Layer, LayerShell, LayerSurface},
     },
 };
-use std::ptr::NonNull;
+use std::{path::PathBuf, ptr::NonNull};
 use wayland_client::{Connection, Proxy, globals::registry_queue_init, protocol::wl_surface};
 
 #[repr(C)]
@@ -47,6 +47,7 @@ pub struct WgslWallpaper {
     pub mouse_bind_group_layout: wgpu::BindGroupLayout,
     // pub shift: Option<u32>,
     pub layer: LayerSurface,
+    pub wallpaper_path: PathBuf,
 }
 pub trait WgpuConfig: 'static + Sized {
     fn optional_features() -> wgpu::Features {
@@ -67,7 +68,7 @@ pub trait WgpuConfig: 'static + Sized {
     }
 }
 
-pub async fn setup<E: WgpuConfig>(monitor_name: Option<String>) {
+pub async fn setup<E: WgpuConfig>(monitor_name: Option<String>, wallpaper_path: PathBuf) {
     env_logger::init();
     // All Wayland apps start by connecting the compositor (server).
     let conn = Connection::connect_to_env().unwrap();
@@ -215,6 +216,7 @@ pub async fn setup<E: WgpuConfig>(monitor_name: Option<String>) {
         adapter,
         queue,
         layer,
+        wallpaper_path,
         mouse_pos_rx: rx,
         mouse_buf: mouse_buf,
         mouse_bind_group: mouse_bind_group,
