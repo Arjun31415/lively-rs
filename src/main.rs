@@ -1,7 +1,7 @@
+mod audio;
 mod graphics;
 mod mouse;
 mod web_mode;
-mod audio;
 
 use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
@@ -10,6 +10,7 @@ use crate::graphics::framework::WgslWallpaper;
 use graphics::framework::MouseUniform;
 use smithay_client_toolkit::{
     compositor::CompositorHandler,
+    compositor::FrameCallbackData,
     output::{OutputHandler, OutputState},
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
@@ -259,7 +260,8 @@ impl WgslWallpaper {
         queue.submit(Some(encoder.finish()));
         self.wl_surface
             .damage_buffer(0, 0, self.width as i32, self.height as i32);
-        self.wl_surface.frame(_qh, self.wl_surface.clone());
+        self.wl_surface
+            .frame(_qh, FrameCallbackData(self.wl_surface.clone()));
         surface_texture.present();
         self.layer.commit();
         self.wl_surface.commit();

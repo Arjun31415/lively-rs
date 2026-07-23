@@ -21,7 +21,7 @@ pub fn start_audio_tracking(tx: Sender<f32>) -> thread::JoinHandle<()> {
             .expect("failed to start parec");
 
         let mut stdout = child.stdout.take().unwrap();
-        let mut buf = [0u8; 4096]; 
+        let mut buf = [0u8; 4096];
         let mut last_splat = Instant::now();
         const COOLDOWN_MS: u128 = 80;
         const THRESHOLD: f32 = 0.04;

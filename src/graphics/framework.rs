@@ -4,7 +4,7 @@ use raw_window_handle::{
 };
 use smithay_client_toolkit::{
     compositor::CompositorState,
-    delegate_compositor, delegate_layer, delegate_output, delegate_registry, delegate_seat,
+    delegate_registry,
     output::OutputState,
     registry::RegistryState,
     seat::SeatState,
@@ -235,9 +235,5 @@ pub async fn setup<E: WgpuConfig>(monitor_name: Option<String>) {
     handle.join().unwrap();
 }
 
-delegate_compositor!(WgslWallpaper);
-delegate_output!(WgslWallpaper);
-delegate_seat!(WgslWallpaper);
-delegate_layer!(WgslWallpaper);
-
+smithay_client_toolkit::delegate_dispatch2!(WgslWallpaper);
 delegate_registry!(WgslWallpaper);
